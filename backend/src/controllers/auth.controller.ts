@@ -1,6 +1,129 @@
 import { Request, Response } from "express";
 import pool from "../config/db";
 import { signToken } from "../utils/jwt";
+import { OAuth2Client } from "google-auth-library";
+import axios from "axios";
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const githubAuth = async (req: any, res: any) => {
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(404).json({ message: "github code missing" });
+  }
+
+  try {
+    const tokenResponse = await axios.post(
+      "https://github.com/login/oauth/access_token",
+      {
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        code,
+      },
+      {
+        headers: { Accept: "application/json" },
+      }
+    );
+
+    const accessToken = tokenResponse.data.access_token;
+
+    if (!accessToken) {
+      return res.status(401).json({ message: "Github access token failed" });
+    }
+
+    const userResponse = await axios.get("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const { id, email, name, avatar_url } = userResponse.data;
+
+    const userEmail = email || `${id}@users.noreply.github.com`;
+
+    const result = await pool.query(
+      `
+      INSERT INTO users (email, name, avatar_url, provider, provider_id)
+      VALUES ($1, $2, $3, 'github', $4)
+      ON CONFLICT (email)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        avatar_url = EXCLUDED.avatar_url,
+        provider = 'github',
+        provider_id = EXCLUDED.provider_id
+      RETURNING id, email
+      `,
+      [userEmail, name, avatar_url, id.toString()]
+    );
+
+    const user = result.rows[0];
+
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+    });
+
+    res.json({
+      message: "Github login successful",
+      token,
+    });
+  } catch (err) {
+    res.status(401).json({ message: "Github authentication failed" });
+  }
+};
+
+export const googleAuth = async (req: any, res: any) => {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({ message: "Google token missing" });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload || !payload.email) {
+      return res.status(401).json({ message: "Invalid Google token" });
+    }
+
+    const { sub, email, name, picture } = payload;
+
+    const result = await pool.query(
+      `
+        INSERT INTO users (email, name, avatar_url, provider, provider_id)
+        VALUES ($1, $2, $3, 'google', $4)
+        ON CONFLICT (email)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          avatar_url = EXCLUDED.avatar_url,
+          provider = 'google',
+          provider_id = EXCLUDED.provider_id
+        RETURNING id, email
+        `,
+      [email, name, picture, sub]
+    );
+
+    const user = result.rows[0];
+
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+    });
+
+    res.json({ message: "Google login successful", token });
+  } catch (err) {
+    console.error("GOOGLE AUTH ERROR: ", err);
+    res.status(401).json({
+      message: "Google authentication failed",
+    });
+  }
+};
 
 export const signup = async (req: Request, res: Response) => {
   const { email, name } = req.body;
