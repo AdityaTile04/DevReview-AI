@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest } from "../middlewares/auth.midddleware";
 import pool from "../config/db";
+import { reviewCodeWithAi } from "../utils/ai";
 
 export const createReview = async (req: AuthRequest, res: Response) => {
   const { code, language, framework } = req.body;
@@ -12,23 +13,13 @@ export const createReview = async (req: AuthRequest, res: Response) => {
     });
   }
 
-  const aiResult = {
-    summary: "Code looks clean but can be improved",
-    issues: [
-      {
-        line: 3,
-        message: "Avoid hardcoded values",
-        severity: "medium",
-      },
-    ],
-    suggestions: [
-      "Use environment variables for configs",
-      "Add proper error handling",
-    ],
-    score: 78,
-  };
-
   try {
+    const aiResult = await reviewCodeWithAi(code, language, framework);
+
+    const normalizedScore = Math.round(
+      typeof aiResult.score === "number" ? aiResult.score : 0
+    );
+
     const result = await pool.query(
       `
         INSERT INTO reviews (
@@ -42,7 +33,7 @@ export const createReview = async (req: AuthRequest, res: Response) => {
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
         `,
-      [userId, language, framework || null, code, aiResult, aiResult.score]
+      [userId, language, framework || null, code, aiResult, normalizedScore]
     );
 
     res.status(201).json({
@@ -50,6 +41,7 @@ export const createReview = async (req: AuthRequest, res: Response) => {
       review: result.rows[0],
     });
   } catch (err) {
+    console.log(err);
     res.status(500).json({
       message: "failed to create review",
     });
