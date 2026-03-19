@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectTrigger,
@@ -15,49 +13,63 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { Sparkles, Filter, Code2, Wand2, AlertTriangle } from "lucide-react";
+import { Sparkles, Filter } from "lucide-react";
 import api from "@/lib/api";
 
-interface Issue {
+type ReviewIssueSeverity = "low" | "medium" | "high";
+
+interface ReviewIssue {
   line?: number | null;
   message: string;
-  severity: "low" | "medium" | "high";
+  severity: ReviewIssueSeverity;
 }
+
+interface StoredReview {
+  language: string;
+  sourceCode?: string;
+  optimizedCode: string;
+  result: {
+    issues?: ReviewIssue[];
+    suggestions?: string[];
+    score?: number | null;
+  };
+  createdAt: number;
+}
+
+const STORAGE_KEY = "devreview:lastReview";
+const EXPIRE_MS = 1000 * 60 * 60 * 6; // 6 hours
 
 export default function DashboardPage() {
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("javascript");
-  const [optimized, setOptimized] = useState("");
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [score, setScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const editorOptions = {
-    fontSize: 16,
-    lineHeight: 24,
-    minimap: { enabled: false },
-    wordWrap: "on" as const,
-    scrollBeyondLastLine: false,
-    padding: { top: 12, bottom: 12 },
-    renderLineHighlight: "all" as const,
-    scrollbar: {
-      verticalScrollbarSize: 10,
-      horizontalScrollbarSize: 10,
-    },
-  };
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  const editorOptions = useMemo(
+    () => ({
+      fontSize: 16,
+      lineHeight: 24,
+      minimap: { enabled: false },
+      wordWrap: "on" as const,
+      scrollBeyondLastLine: false,
+      padding: { top: 12, bottom: 12 },
+      renderLineHighlight: "all" as const,
+      scrollbar: {
+        verticalScrollbarSize: 10,
+        horizontalScrollbarSize: 10,
+      },
+    }),
+    []
+  );
 
   const runReview = async () => {
     if (!code.trim()) return;
 
     try {
+      setError(null);
       setLoading(true);
-      setIssues([]);
-      setSuggestions([]);
-      setScore(null);
-      setOptimized("");
 
       const res = await api.post(
         "/reviews",
@@ -66,206 +78,102 @@ export default function DashboardPage() {
       );
 
       const review = res.data.review;
-      const result = review.result;
+      const stored: StoredReview = {
+        language,
+        sourceCode: code,
+        optimizedCode: review.optimizedCode || "",
+        result: review.result || {},
+        createdAt: Date.now(),
+      };
 
-      setIssues(result.issues || []);
-      setSuggestions(result.suggestions || []);
-      setScore(result.score ?? null);
+      // Since GET /api/reviews/:id doesn't include optimizedCode, we keep the
+      // POST payload for the results screen.
+      localStorage.setItem("devreview:lastReview", JSON.stringify(stored));
 
-      setOptimized(review.optimizedCode || "");
+      router.push("/dashboard/results");
     } catch (err) {
       console.error(err);
+      setError("Failed to review code. Please try again.");
       alert("Failed to review code");
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    // Restore previously reviewed code so the "Back" button doesn't show an empty editor.
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw) as StoredReview;
+      if (!parsed?.createdAt || Date.now() - parsed.createdAt > EXPIRE_MS) return;
+
+      if (typeof parsed.language === "string" && parsed.language) {
+        setLanguage(parsed.language);
+      }
+      if (typeof parsed.sourceCode === "string") {
+        setCode(parsed.sourceCode);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   return (
-    <main className="h-screen pt-16 bg-black text-white flex overflow-hidden">
-      <aside className="w-80 bg-zinc-950/80 backdrop-blur border-r border-zinc-800 p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-2 font-semibold text-lg">
-          <Filter className="text-indigo-400" size={18} />
-          Review Settings
+    <main className="h-screen pt-16 bg-black text-white overflow-hidden">
+      <div className="h-full flex flex-col">
+        <div className="p-6 border-b border-zinc-800 bg-black/20 backdrop-blur flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 font-semibold text-lg">
+            <Filter className="text-indigo-400" size={18} />
+            Review Code
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Select value={language} onValueChange={setLanguage}>
+              <SelectTrigger className="bg-zinc-900 border-zinc-800 w-[190px]">
+                <SelectValue placeholder="Language" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="javascript">JavaScript</SelectItem>
+                <SelectItem value="typescript">TypeScript</SelectItem>
+                <SelectItem value="java">Java</SelectItem>
+                <SelectItem value="python">Python</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={runReview}
+              disabled={loading || !code.trim()}
+              className="bg-indigo-500 hover:bg-indigo-600 gap-2"
+            >
+              <Sparkles size={16} />
+              {loading ? "Reviewing…" : "Review Code"}
+            </Button>
+          </div>
         </div>
 
-        <Select value={language} onValueChange={setLanguage}>
-          <SelectTrigger className="bg-zinc-900 border-zinc-800">
-            <SelectValue placeholder="Language" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="javascript">JavaScript</SelectItem>
-            <SelectItem value="typescript">TypeScript</SelectItem>
-            <SelectItem value="java">Java</SelectItem>
-            <SelectItem value="python">Python</SelectItem>
-          </SelectContent>
-        </Select>
+        {error && (
+          <div className="px-6 pt-4">
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )}
 
-        <Separator />
-
-        <Button
-          onClick={runReview}
-          disabled={loading}
-          className="mt-auto bg-indigo-500 hover:bg-indigo-600 gap-2"
-        >
-          <Sparkles size={16} />
-          {loading ? "Reviewing…" : "Review Code"}
-        </Button>
-      </aside>
-
-      <section className="flex-1 flex flex-col">
-        <div className="flex flex-1 border-b border-zinc-800 min-h-0">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="w-1/2 p-6 border-r border-zinc-800 flex flex-col min-h-0"
-          >
-            <div className="flex items-center gap-2 mb-3 text-zinc-300">
-              <Code2 size={16} className="text-indigo-400" />
-              Input Code
-            </div>
-
-            <Card className="flex-1 bg-zinc-950 border-zinc-800 overflow-hidden min-h-0">
-              <Editor
-                height="100%"
-                value={code}
-                onChange={(v) => setCode(v || "")}
-                language={language}
-                theme="vs-dark"
-                options={{
-                  ...editorOptions,
-                }}
-              />
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="w-1/2 p-6 flex flex-col min-h-0"
-          >
-            <div className="flex items-center gap-2 mb-3 text-zinc-300">
-              <Wand2 size={16} className="text-indigo-400" />
-              Reviewed Code
-              {loading && (
-                <span className="ml-2 text-sm text-indigo-400 animate-pulse">
-                  AI analyzing…
-                </span>
-              )}
-            </div>
-
-            <Card className="flex-1 bg-zinc-950 border-zinc-800 overflow-hidden min-h-0">
-              <Editor
-                height="100%"
-                value={optimized}
-                language={language}
-                theme="vs-dark"
-                options={{
-                  readOnly: true,
-                  ...editorOptions,
-                }}
-              />
-            </Card>
-          </motion.div>
+        <div className="flex-1 min-h-0 p-6">
+          <Card className="h-full bg-zinc-950 border-zinc-800 overflow-hidden">
+            <Editor
+              height="100%"
+              value={code}
+              onChange={(v) => setCode(v || "")}
+              language={language}
+              theme="vs-dark"
+              options={{
+                ...editorOptions,
+              }}
+            />
+          </Card>
         </div>
-
-        <div className="h-72 p-6 overflow-hidden">
-          <Tabs defaultValue="issues">
-            <TabsList className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-1 flex gap-1">
-              <TabsTrigger
-                value="issues"
-                className="data-[state=active]:bg-white data-[state=active]:text-black
-               text-zinc-300 hover:text-white hover:bg-zinc-800
-               rounded-lg px-4 py-2 transition"
-              >
-                Issues
-              </TabsTrigger>
-
-              <TabsTrigger
-                value="suggestions"
-                className="data-[state=active]:bg-white data-[state=active]:text-black
-               text-zinc-300 hover:text-white hover:bg-zinc-800
-               rounded-lg px-4 py-2 transition"
-              >
-                Suggestions
-              </TabsTrigger>
-
-              <TabsTrigger
-                value="score"
-                className="data-[state=active]:bg-white data-[state=active]:text-black
-               text-zinc-300 hover:text-white hover:bg-zinc-800
-               rounded-lg px-4 py-2 transition"
-              >
-                Score
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="issues">
-              <Card className="mt-4 bg-zinc-950 border-zinc-800 p-4">
-                <ScrollArea className="h-44 space-y-3 text-sm">
-                  {!loading && issues.length === 0 && score !== null && (
-                    <p className="text-zinc-400">No issues found.</p>
-                  )}
-
-                  {issues.map((issue, i) => (
-                    <div
-                      key={i}
-                      className="flex justify-between items-center bg-zinc-900/60 p-3 rounded-md"
-                    >
-                      <span className="flex items-center gap-2 text-zinc-100">
-                        <AlertTriangle className="text-red-400" size={14} />
-                        {issue.message}
-                      </span>
-
-                      <Badge
-                        className={
-                          issue.severity === "high"
-                            ? "bg-red-600"
-                            : issue.severity === "medium"
-                            ? "bg-yellow-500 text-black"
-                            : "bg-green-600"
-                        }
-                      >
-                        {issue.severity}
-                      </Badge>
-                    </div>
-                  ))}
-                </ScrollArea>
-              </Card>
-            </TabsContent>
-            <TabsContent value="suggestions">
-              <Card className="mt-4 bg-zinc-950 border-zinc-800">
-                <ScrollArea className="h-44 px-4 py-3 space-y-3 text-sm">
-                  {suggestions.map((s, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-3 p-3 rounded-md bg-zinc-900/70 hover:bg-zinc-900 transition"
-                    >
-                      <span className="mt-1 h-2 w-2 rounded-full bg-indigo-400" />
-                      <span className="text-zinc-100">{s}</span>
-                    </div>
-                  ))}
-                </ScrollArea>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="score">
-              <Card className="mt-4 bg-zinc-950 border-zinc-800 p-6 text-center">
-                {score !== null ? (
-                  <>
-                    <div className="text-6xl font-bold text-indigo-400">
-                      {score}
-                    </div>
-                    <p className="text-zinc-400 mt-2">Code Quality Score</p>
-                  </>
-                ) : (
-                  <p className="text-zinc-500">Run a review to see score</p>
-                )}
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </section>
+      </div>
     </main>
   );
 }
