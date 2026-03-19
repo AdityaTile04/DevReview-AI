@@ -1,5 +1,6 @@
 "use client";
 
+import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
@@ -8,7 +9,9 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="bg-black text-white overflow-hidden">
+    <>
+      <Navbar />
+      <main className="bg-black text-white overflow-hidden pt-16">
       <section className="relative min-h-screen flex items-center justify-center px-6">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -18,7 +21,7 @@ export default function HomePage() {
         >
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
             AI-Powered Code Reviews <br />
-            <span className="bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">
               for Backend Developers
             </span>
           </h1>
@@ -93,7 +96,7 @@ export default function HomePage() {
       </section>
 
       <section className="py-32 px-6 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-zinc-950 to-black" />
+        <div className="absolute inset-0 bg-linear-to-b from-black via-zinc-950 to-black" />
 
         <div className="relative max-w-6xl mx-auto text-center">
           <motion.h2
@@ -118,7 +121,7 @@ export default function HomePage() {
           </motion.p>
 
           <div className="relative grid md:grid-cols-3 gap-12">
-            <div className="hidden md:block absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent" />
+            <div className="hidden md:block absolute top-1/2 left-0 right-0 h-px bg-linear-to-r from-transparent via-indigo-500/40 to-transparent" />
 
             {[
               {
@@ -155,7 +158,7 @@ export default function HomePage() {
                 >
                   <div
                     className={`inline-flex items-center justify-center w-14 h-14 rounded-xl
-              bg-gradient-to-r ${item.gradient} text-black font-bold text-lg mb-6`}
+              bg-linear-to-r ${item.gradient} text-black font-bold text-lg mb-6`}
                   >
                     {item.step}
                   </div>
@@ -224,5 +227,6 @@ Suggestions:
         © {new Date().getFullYear()} DevReview AI. Built for developers.
       </footer>
     </main>
+    </>
   );
 }

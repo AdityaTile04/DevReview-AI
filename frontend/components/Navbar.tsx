@@ -1,12 +1,67 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { LogOut } from "lucide-react";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [emailInitial, setEmailInitial] = useState<string>("U");
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const decodeJwtEmail = (jwt: string) => {
+    // Token is created server-side with { userId, email }
+    // We only decode payload client-side for displaying avatar initials.
+    try {
+      const parts = jwt.split(".");
+      if (parts.length < 2) return null;
+
+      const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const padded =
+        base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+      const json = atob(padded);
+      const payload = JSON.parse(json);
+      return typeof payload?.email === "string" ? payload.email : null;
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const t = localStorage.getItem("token");
+    setToken(t);
+
+    const decodedEmail = t ? decodeJwtEmail(t) : null;
+    if (decodedEmail) {
+      setEmailInitial(decodedEmail.trim().charAt(0).toUpperCase());
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    // Clear cookie if it exists (some flows set it)
+    document.cookie = "token=; path=/; max-age=0";
+
+    setToken(null);
+    setEmailInitial("U");
+    router.replace("/");
+  };
+
+  const loggedIn = Boolean(token);
+  const minimalMode = pathname?.startsWith("/dashboard");
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -32,32 +87,86 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8">
-          {["Features", "How it Works"].map((item) => (
+        {!minimalMode && (
+          <nav className="hidden md:flex items-center gap-8">
             <Link
-              key={item}
               href="#"
               className="relative text-sm text-zinc-300 hover:text-white transition"
             >
               <span className="after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-indigo-500 after:transition-all hover:after:w-full">
-                {item}
+                Features
               </span>
             </Link>
-          ))}
-        </nav>
+
+            <Link
+              href="#"
+              className="relative text-sm text-zinc-300 hover:text-white transition"
+            >
+              <span className="after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-indigo-500 after:transition-all hover:after:w-full">
+                How it Works
+              </span>
+            </Link>
+
+            {loggedIn && (
+              <Link
+                href="/dashboard"
+                className="relative text-sm text-zinc-300 hover:text-white transition"
+              >
+                <span className="after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-0 after:bg-indigo-500 after:transition-all hover:after:w-full">
+                  Dashboard
+                </span>
+              </Link>
+            )}
+          </nav>
+        )}
 
         <div className="flex items-center gap-3">
-          <Link href="/login">
-            <Button variant="outline" className="text-black">
-              Sign In
-            </Button>
-          </Link>
+          {!loggedIn ? (
+            <>
+              {!minimalMode && (
+                <>
+                  <Link href="/login">
+                    <Button variant="outline" className="text-black">
+                      Sign In
+                    </Button>
+                  </Link>
 
-          <Link href="/signup">
-            <Button className="bg-indigo-500 hover:bg-indigo-600 text-white">
-              Get Started
-            </Button>
-          </Link>
+                  <Link href="/signup">
+                    <Button className="bg-indigo-500 hover:bg-indigo-600 text-white">
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
+              )}
+            </>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full hover:bg-zinc-800/60"
+                  aria-label="User menu"
+                >
+                  <Avatar className="size-8">
+                    <AvatarFallback className="bg-zinc-900 text-white ring-1 ring-zinc-800">
+                      {emailInitial}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  onSelect={handleLogout}
+                  className="text-red-400 focus:text-red-400"
+                >
+                  <LogOut className="mr-2 size-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </motion.header>

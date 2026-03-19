@@ -35,6 +35,19 @@ export default function DashboardPage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [score, setScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const editorOptions = {
+    fontSize: 16,
+    lineHeight: 24,
+    minimap: { enabled: false },
+    wordWrap: "on" as const,
+    scrollBeyondLastLine: false,
+    padding: { top: 12, bottom: 12 },
+    renderLineHighlight: "all" as const,
+    scrollbar: {
+      verticalScrollbarSize: 10,
+      horizontalScrollbarSize: 10,
+    },
+  };
 
   const runReview = async () => {
     if (!code.trim()) return;
@@ -69,8 +82,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="h-screen bg-black text-white flex overflow-hidden">
-      <aside className="w-80 bg-zinc-950 border-r border-zinc-800 p-6 flex flex-col gap-5">
+    <main className="h-screen pt-16 bg-black text-white flex overflow-hidden">
+      <aside className="w-80 bg-zinc-950/80 backdrop-blur border-r border-zinc-800 p-6 flex flex-col gap-5">
         <div className="flex items-center gap-2 font-semibold text-lg">
           <Filter className="text-indigo-400" size={18} />
           Review Settings
@@ -101,27 +114,26 @@ export default function DashboardPage() {
       </aside>
 
       <section className="flex-1 flex flex-col">
-        <div className="flex flex-1 border-b border-zinc-800">
+        <div className="flex flex-1 border-b border-zinc-800 min-h-0">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="w-1/2 p-6 border-r border-zinc-800 flex flex-col"
+            className="w-1/2 p-6 border-r border-zinc-800 flex flex-col min-h-0"
           >
             <div className="flex items-center gap-2 mb-3 text-zinc-300">
               <Code2 size={16} className="text-indigo-400" />
               Input Code
             </div>
 
-            <Card className="flex-1 bg-zinc-950 border-zinc-800 overflow-hidden">
+            <Card className="flex-1 bg-zinc-950 border-zinc-800 overflow-hidden min-h-0">
               <Editor
+                height="100%"
                 value={code}
                 onChange={(v) => setCode(v || "")}
                 language={language}
                 theme="vs-dark"
                 options={{
-                  fontSize: 14,
-                  minimap: { enabled: false },
-                  wordWrap: "on",
+                  ...editorOptions,
                 }}
               />
             </Card>
@@ -130,7 +142,7 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="w-1/2 p-6 flex flex-col"
+            className="w-1/2 p-6 flex flex-col min-h-0"
           >
             <div className="flex items-center gap-2 mb-3 text-zinc-300">
               <Wand2 size={16} className="text-indigo-400" />
@@ -142,23 +154,22 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <Card className="flex-1 bg-zinc-950 border-zinc-800 overflow-hidden">
+            <Card className="flex-1 bg-zinc-950 border-zinc-800 overflow-hidden min-h-0">
               <Editor
+                height="100%"
                 value={optimized}
                 language={language}
                 theme="vs-dark"
                 options={{
                   readOnly: true,
-                  fontSize: 14,
-                  minimap: { enabled: false },
-                  wordWrap: "on",
+                  ...editorOptions,
                 }}
               />
             </Card>
           </motion.div>
         </div>
 
-        <div className="min-h-[260px] p-6">
+        <div className="h-72 p-6 overflow-hidden">
           <Tabs defaultValue="issues">
             <TabsList className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-1 flex gap-1">
               <TabsTrigger
@@ -193,7 +204,7 @@ export default function DashboardPage() {
               <Card className="mt-4 bg-zinc-950 border-zinc-800 p-4">
                 <ScrollArea className="h-44 space-y-3 text-sm">
                   {!loading && issues.length === 0 && score !== null && (
-                    <p className="text-zinc-400">No issues found 🎉</p>
+                    <p className="text-zinc-400">No issues found.</p>
                   )}
 
                   {issues.map((issue, i) => (
