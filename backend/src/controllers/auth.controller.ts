@@ -7,7 +7,7 @@ import axios from "axios";
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 export const githubAuth = async (req: any, res: any) => {
-  const { code } = req.body;
+  const { code, redirectUri } = req.body;
 
   if (!code) {
     return res.status(404).json({ message: "github code missing" });
@@ -20,6 +20,8 @@ export const githubAuth = async (req: any, res: any) => {
         client_id: process.env.GITHUB_CLIENT_ID,
         client_secret: process.env.GITHUB_CLIENT_SECRET,
         code,
+        // GitHub requires redirect_uri here if it was used in the authorize step
+        ...(redirectUri ? { redirect_uri: redirectUri } : {}),
       },
       {
         headers: { Accept: "application/json" },
@@ -29,7 +31,14 @@ export const githubAuth = async (req: any, res: any) => {
     const accessToken = tokenResponse.data.access_token;
 
     if (!accessToken) {
-      return res.status(401).json({ message: "Github access token failed" });
+      console.error(
+        "GITHUB TOKEN EXCHANGE ERROR: ",
+        tokenResponse.data || "No response body"
+      );
+      return res.status(401).json({
+        message: "Github access token failed",
+        details: tokenResponse.data,
+      });
     }
 
     const userResponse = await axios.get("https://api.github.com/user", {
@@ -68,8 +77,24 @@ export const githubAuth = async (req: any, res: any) => {
       message: "Github login successful",
       token,
     });
-  } catch (err) {
-    res.status(401).json({ message: "Github authentication failed" });
+  } catch (err: any) {
+    const upstream = err?.response?.data;
+    const message = err?.message;
+    console.error("GITHUB AUTH ERROR: ", upstream || message);
+
+    // If GitHub rejected the exchange, keep this 401.
+    if (upstream) {
+      return res.status(401).json({
+        message: "Github authentication failed",
+        details: upstream,
+      });
+    }
+
+    // Otherwise this is likely DB/network/config; surface as 500.
+    return res.status(500).json({
+      message: "Github authentication failed (server error)",
+      details: message,
+    });
   }
 };
 

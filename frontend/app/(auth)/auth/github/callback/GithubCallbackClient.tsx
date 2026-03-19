@@ -18,7 +18,9 @@ export default function GitHubCallbackClient() {
 
     const exchangeCode = async () => {
       try {
-        const res = await api.post("/auth/github", { code });
+        const redirectUri = `${window.location.origin}/auth/github/callback`;
+
+        const res = await api.post("/auth/github", { code, redirectUri });
 
         localStorage.setItem("token", res.data.token);
         document.cookie = `token=${res.data.token}; path=/`;
